@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>カレンダー＆タイムテーブル</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons (for navigation arrows and moon/sun) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/css/all.min.css">
+    <style>
+        /* 日本語フォント設定 */
+        body {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+        }
+        /* スクロールバーのスタイルをカスタマイズ（タイムテーブル用） */
+        .custom-scroll::-webkit-scrollbar {
+            /* スクロールバーの読み込みが遅い場合があるため、一時的に非表示にする */
+            display: none;
+            width: 6px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background-color: #cbd5e1;
+            border-radius: 3px;
+        }
+        /* ダークモード時のスクロールバー */
+        .dark .custom-scroll::-webkit-scrollbar-thumb {
+            background-color: #4b5563; /* Gray-600 */
+        }
+        .custom-scroll::-webkit-scrollbar-track {
+            background-color: #f1f5f9;
+        }
+        /* マークダウン変換後のスタイル */
+        .analysis-content h1, .analysis-content h2, .analysis-content h3 {
+            font-weight: bold;
+            margin-top: 1rem;
+            margin-bottom: 0.5rem;
+            color: #3b82f6; /* Primary Blue */
+        }
+        .analysis-content h1 { font-size: 1.5rem; }
+        .analysis-content h2 { font-size: 1.25rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.25rem; }
+        .analysis-content h3 { font-size: 1.1rem; }
+        .analysis-content ul {
+            list-style-type: disc;
+            padding-left: 1.5rem;
+            margin-top: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .analysis-content li {
+            margin-bottom: 0.25rem;
+        }
+        .analysis-content p {
+            margin-bottom: 1rem;
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            darkMode: 'class', // ダークモードをclassベースで有効化
+            theme: {
+                extend: {
+                    colors: {
+                        'primary-blue': '#3b82f6',
+                        'accent-orange': '#f97316',
+                        'success-green': '#10b981',
+                        'selected-teal': '#14b8a6', // 選択された日付用の色 Teal-500
+                        // ダークモード用の色を定義（必要に応じて）
+                        'dark-bg': '#1f2937',      // Gray-800
+                        'dark-card': '#374151',    // Gray-700
+                        'dark-text': '#f3f4f6',    // Gray-100
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="p-1 md:p-2 bg-gray-50 dark:bg-dark-bg text-gray-800 dark:text-dark-text transition-colors duration-300 flex flex-col min-h-screen">
+
+    <div class="max-w-7xl mx-auto w-full flex flex-col">
+        <header class="flex justify-between items-center mb-4 border-b-4 border-primary-blue pb-1 flex-shrink-0">
+            <h1 id="current-datetime" class="text-3xl font-light text-gray-800 dark:text-dark-text tracking-wider">
+                <!-- JavaScriptで日時が挿入されます -->
+            </h1>
+            <button id="theme-toggle" class="p-3 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-dark-text hover:bg-gray-300 dark:hover:bg-gray-600 transition-all duration-300 shadow-md">
+                <i id="theme-icon" class="fas fa-moon text-xl"></i>
+            </button>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-6 flex-grow">
+            
+            <!-- 1. カレンダー (3/5 幅 on desktop) -->
+            <div id="calendar-card" class="md:col-span-3 bg-white dark:bg-dark-card p-3 shadow-2xl rounded-xl border border-gray-100 dark:border-gray-700 relative transition-colors duration-300 max-h-[90vh] overflow-y-auto custom-scroll flex flex-col">
+                
+                <!-- Google Calendar 連携セクション (コンパクト化) -->
+                <div class="mb-3 p-2 border rounded-lg bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-600 flex items-center justify-between transition-colors duration-300 flex-shrink-0">
+                    <div id="connection-status" class="flex items-center text-sm font-medium">
+                        <i id="status-icon" class="fas fa-unlink text-gray-500 dark:text-gray-400 mr-2"></i>
+                        <span id="status-text" class="text-gray-700 dark:text-gray-200">Googleカレンダーは未接続です。</span>
+                    </div>
+                    <button id="reload-calendar-btn" class="bg-primary-blue hover:bg-blue-600 text-white font-semibold py-1.5 px-3 rounded-lg transition duration-150 shadow-md text-sm">
+                        <i class="fas fa-sync-alt mr-1"></i> 再読込
+                    </button>
+                </div>
+                <!-- /Google Calendar 連携セクション -->
+
+                <div class="flex justify-between items-center mb-3 flex-shrink-0">
+                    <button id="prev-month" class="bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-dark-text font-semibold py-2 px-3 rounded-lg transition duration-150">
+                        <i class="fas fa-chevron-left"></i> 前月
+                    </button>
+                    <div id="month-display" class="text-2xl font-light text-gray-800 dark:text-dark-text tracking-wider"></div>
+                    <button id="next-month" class="bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-dark-text font-semibold py-2 px-3 rounded-lg transition duration-150">
+                        翌月 <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-7 text-center font-bold text-sm mb-1 border-b border-gray-200 dark:border-gray-600 flex-shrink-0">
+                    <div class="text-red-500 py-1">日</div>
+                    <div class="text-gray-600 dark:text-gray-300 py-1">月</div>
+                    <div class="text-gray-600 dark:text-gray-300 py-1">火</div>
+                    <div class="text-gray-600 dark:text-gray-300 py-1">水</div>
+                    <div class="text-gray-600 dark:text-gray-300 py-1">木</div>
+                    <div class="text-gray-600 dark:text-gray-300 py-1">金</div>
+                    <div class="text-primary-blue py-1">土</div>
+                </div>
+
+                <div id="calendar-grid" class="grid grid-cols-7 gap-0 flex-grow">
+                    <!-- Calendar days will be rendered here by JavaScript -->
+                </div>
+            </div>
+
+            <!-- 2. タイムテーブル (2/5 幅 on desktop) -->
+            <div id="timetable-card" class="md:col-span-2 bg-white dark:bg-dark-card p-3 shadow-2xl rounded-xl border border-gray-100 dark:border-gray-700 flex flex-col transition-colors duration-300 max-h-[90vh] overflow-y-auto custom-scroll">
+                
+                <!-- タイムテーブルヘッダーの変更 (分析ボタンを追加) -->
+                <div class="flex justify-between items-start mb-4 flex-shrink-0 flex-wrap">
+                    <h2 class="text-xl font-light text-gray-700 dark:text-dark-text flex items-center tracking-wider mb-2 sm:mb-0">
+                        <i class="fas fa-clock text-accent-orange mr-2"></i> 
+                        <span id="selected-date-display"></span>
+                    </h2>
+                    
+                    <div class="flex items-center space-x-2">
+                        <!-- Gemini 分析ボタン (font-light font-sans) -->
+                        <button id="analyze-schedule-btn" class="text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 font-light font-sans py-1 px-2 rounded-lg transition duration-150 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                            <i class="fas fa-bolt mr-1"></i> 今日の予定を分析
+                        </button>
+                        
+                        <!-- 「今日に戻る」ボタン -->
+                        <button id="back-to-today-btn" class="text-sm bg-primary-blue hover:bg-blue-600 text-white font-semibold py-1 px-2 rounded-lg transition duration-150 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                            <i class="fas fa-home mr-1"></i> 今日
+                        </button>
+                    </div>
+                </div>
+                <!-- /タイムテーブルヘッダーの変更 -->
+                
+                <!-- スケジュールリストコンテナ -->
+                <div class="flex-grow overflow-y-auto custom-scroll space-y-3 p-2 -m-2">
+                    <div id="timetable-container" class="space-y-3">
+                        <p class="text-gray-500 text-center py-4">予定がありません</p>
+                    </div>
+                </div>
+                
+                <!-- 分析結果表示コンテナの追加 -->
+                <div id="analysis-result-container" class="mt-4 flex-shrink-0">
+                    <!-- AI分析結果がここに表示されます -->
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        // =======================================================
+        // Gemini API Configuration and Utility
+        // =======================================================
+        const apiKey = ""; // Canvas環境で自動的に提供されます
+        const GEMINI_MODEL = 'gemini-2.5-flash-preview-09-2025';
+
+        /**
+         * 選択された日付に基づいて分析ボタンのテキストを生成する
+         * @param {string} dateString - 選択された日付 ('YYYY-MM-DD')
+         * @returns {string} - "今日" または "X月Y日"
+         */
+        function getButtonDateTitle(dateString) {
+            if (dateString === todayString) {
+                return "今日";
+            }
+            // dateStringが 'YYYY-MM-DD' 形式であることを前提
+            const [y, m, d] = dateString.split('-').map(Number);
+            return `${m}月${d}日`;
+        }
+        
+        /**
+         * 簡易的なマークダウンをHTMLに変換する (強化版)
+         * (太字: **text**, 箇条書き: * item/ - item, ヘッダー: #, ##, ###, 改行: \n の対応)
+         * @param {string} markdownText
+         * @returns {string} HTML文字列
+         */
+        function markdownToHtml(markdownText) {
+            let html = markdownText;
+
+            // 1. ヘッダー (#, ##, ###)
+            html = html.replace(/^###\s*(.*)$/gm, '<h3>$1</h3>');
+            html = html.replace(/^##\s*(.*)$/gm, '<h2>$1</h2>');
+            html = html.replace(/^#\s*(.*)$/gm, '<h1>$1</h1>');
+
+            // 2. 太字 (**text**)
+            html = html.replace(/\*\*(.*?)\*\*/gs, '<strong>$1</strong>');
+
+            // 3. 箇条書きリスト (* item or - item)
+            // リスト項目を一時的に <li> に変換
+            html = html.replace(/^(?:[\*\-]\s+)(.*)$/gm, '<li>$1</li>');
+            
+            // <li>タグのブロック全体を <ul> で囲む
+            html = html.replace(/(<li>.*?<\/li>(?:\n?<li>.*?<\/li>)*)/gs, (match) => {
+                // <li>タグが続く行のブロックを見つける
+                if (match.trim().startsWith('<li>') && match.trim().endsWith('</li>')) {
+                    // 既に <ul> で囲まれている場合は処理しないようにする（今回はシンプル化のため省略）
+                    return `<ul>${match}</ul>`;
+                }
+                return match;
+            });
+            
+            // 4. 段落と改行
+            // ブロック要素 (h1-h3, ul) 以外のコンテンツを段落化する
+            const lines = html.split('\n');
+            let result = '';
+            let inParagraph = false;
+            
+            lines.forEach(line => {
+                const trimmedLine = line.trim();
+                
+                if (trimmedLine.startsWith('<h') || trimmedLine.startsWith('<ul') || trimmedLine.startsWith('</ul')) {
+                    // ブロック要素の前後の段落を閉じる
+                    if (inParagraph) {
+                        result += '</p>';
+                        inParagraph = false;
+                    }
+                    result += line + '\n';
+                } else if (trimmedLine === '') {
+                    // 空行は段落を閉じる
+                    if (inParagraph) {
+                        result += '</p>\n';
+                        inParagraph = false;
+                    } else {
+                        result += '\n'; // 連続する空行を許容
+                    }
+                } else {
+                    // 通常のテキスト行
+                    if (!inParagraph) {
+                        result += '<p>' + line;
+                        inParagraph = true;
+                    } else {
+                        // 段落内の単一改行は <br>
+                        result += '<br>' + line;
+                    }
+                }
+            });
+
+            // 最後に開いている段落を閉じる
+            if (inParagraph) {
+                result += '</p>';
+            }
+            
+            // 連続する空の <p> タグを削除
+            result = result.replace(/<p>\s*<\/p>/g, '');
+            result = result.replace(/<br>\s*<\/p>/g, '</p>'); // <br>で終わる段落の修正
+            
+            return result.trim();
+        }
+
+
+        /**
+         * Gemini APIを呼び出し、指数バックオフで再試行を処理する関数
+         * @param {string} userQuery - ユーザーのプロンプト
+         * @param {string} systemPrompt - システム命令 (オプション)
+         * @param {boolean} useSearch - Google Search Groundingを使用するかどうか
+         * @param {number} retryCount - 現在の再試行回数
+         * @returns {Promise<{text: string, sources: Array<{uri: string, title: string}>}>}
+         */
+        async function fetchGeminiResponse(userQuery, systemPrompt = "", useSearch = false, retryCount = 0) {
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+            const maxRetries = 3;
+            const tools = useSearch ? [{ "google_search": {} }] : undefined;
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                tools: tools,
+                systemInstruction: systemPrompt ? { parts: [{ text: systemPrompt }] } : undefined,
+            };
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    if (response.status === 429 && retryCount < maxRetries) {
+                        const delay = Math.pow(2, retryCount) * 1000 + Math.random() * 1000;
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        return fetchGeminiResponse(userQuery, systemPrompt, useSearch, retryCount + 1);
+                    }
+                    throw new Error(`API call failed with status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                const candidate = result.candidates?.[0];
+
+                if (!candidate || !candidate.content?.parts?.[0]?.text) {
+                    throw new Error("Invalid response structure from Gemini API.");
+                }
+
+                const text = candidate.content.parts[0].text;
+
+                let sources = [];
+                const groundingMetadata = candidate.groundingMetadata;
+                if (groundingMetadata && groundingMetadata.groundingAttributions) {
+                    sources = groundingMetadata.groundingAttributions
+                        .map(attribution => ({
+                            uri: attribution.web?.uri,
+                            title: attribution.web?.title,
+                        }))
+                        .filter(source => source.uri && source.title);
+                }
+
+                return { text, sources };
+
+            } catch (error) {
+                console.error("Gemini API Error:", error);
+                return { text: "エラー: スケジュール分析中に問題が発生しました。", sources: [] };
+            }
+        }
+        
+        /**
+         * 選択された日付のスケジュールをGemini APIで分析し、結果を表示する
+         */
+        async function analyzeDailySchedule() {
+            const analysisContainer = document.getElementById('analysis-result-container');
+            const analyzeBtn = document.getElementById('analyze-schedule-btn');
+
+            const defaultClasses = 'text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 font-light font-sans py-1 px-2 rounded-lg transition duration-150 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed';
+            const hideClasses = 'text-sm bg-red-500 hover:bg-red-600 text-white font-light font-sans py-1 px-2 rounded-lg transition duration-150 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed';
+            
+            const dateTitleForButton = getButtonDateTitle(selectedDateString);
+
+
+            // 既に分析結果が表示されている場合、非表示にして終了する
+            if (analysisContainer.querySelector('.gemini-analysis-box')) {
+                analysisContainer.innerHTML = '';
+                // ボタンテキストを新しいロジックでリセット
+                analyzeBtn.innerHTML = `<i class="fas fa-bolt mr-1"></i> ${dateTitleForButton}の予定を分析`;
+                // クラスをデフォルトに戻す
+                analyzeBtn.className = defaultClasses;
+                return;
+            }
+            
+            // UIを更新してローディング状態にする
+            
+            analysisContainer.innerHTML = `
+                <div class="flex items-center justify-center p-4 bg-gray-100 dark:bg-gray-800 rounded-xl">
+                    <i class="fas fa-spinner fa-spin mr-3 text-primary-blue"></i>
+                    <span class="text-primary-blue dark:text-blue-300">本日の予定を分析中...</span>
+                </div>`;
+            
+            // ローディング中のボタン表示
+            analyzeBtn.disabled = true;
+            analyzeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 分析中';
+            analyzeBtn.classList.remove('bg-gray-200', 'dark:bg-gray-700', 'hover:bg-gray-300', 'dark:hover:bg-gray-600', 'text-gray-700', 'dark:text-gray-200', 'font-light', 'font-sans'); // font-light, font-sansを削除
+            analyzeBtn.classList.add('bg-gray-400', 'text-white');
+
+
+            const schedules = getDailySchedule(selectedDateString);
+            const dateTitle = dateFormatter.format(new Date(selectedDateString));
+
+            if (schedules.length === 0) {
+                analysisContainer.innerHTML = `
+                    <div class="p-4 text-center text-gray-500 dark:text-gray-400 border border-dashed border-gray-300 dark:border-gray-600 rounded-xl">
+                        この日の予定は空なので、分析できません。
+                    </div>`;
+                // ボタンを元に戻す
+                analyzeBtn.disabled = false;
+                analyzeBtn.className = defaultClasses;
+                analyzeBtn.innerHTML = `<i class="fas fa-bolt mr-1"></i> ${dateTitleForButton}の予定を分析`;
+                return;
+            }
+
+            // スケジュールを整形してプロンプトに追加
+            const scheduleList = schedules.map(s => {
+                return `${s.time ? s.time : '終日'}: [${s.type === 'work' ? '仕事' : '個人'}] ${s.title}`;
+            }).join('\n');
+
+            const userQuery = `今日(${dateTitle})のスケジュールは以下の通りです:\n\n${scheduleList}\n\nこのスケジュールを分析し、以下の3つの要素を含む日本語で要点をまとめてください。応答はマークダウン形式で整形し、**太字**、箇条書き、### ヘッダーを使用して構造化してください。\n1. 一日のテーマ (例: 集中作業日、調整が多い日)\n2. 時間管理の具体的なアドバイス (例: 休憩のタイミング、タスク間の切り替え)\n3. スケジュールを最適化するための行動提案。\n\n分析は、フレンドリーな口調の簡潔な段落形式でお願いします。`;
+
+            const systemPrompt = "あなたはプロフェッショナルなAIアシスタントであり、ユーザーのスケジュール管理と生産性向上を支援します。親しみやすく、かつ的確なアドバイスを提供してください。";
+
+            // GASのサーバーサイド関数を呼び出す
+            const result = await new Promise((resolve, reject) => {
+                google.script.run
+                    .withSuccessHandler(resolve)
+                    .withFailureHandler(reject)
+                    .analyzeScheduleWithGemini(userQuery, systemPrompt);
+            });
+
+            // --- 修正点: markdownToHtmlを適用 ---
+            const renderedHtml = markdownToHtml(result.text); 
+            
+            // 結果の表示
+            let htmlContent = `<div class="gemini-analysis-box p-4 bg-blue-50 dark:bg-gray-800 border border-primary-blue/30 dark:border-primary-blue/50 rounded-xl shadow-lg">`; // gemini-analysis-boxを追加
+            htmlContent += `<h3 class="text-lg font-bold text-primary-blue dark:text-blue-300 mb-2 flex items-center"><i class="fas fa-magic mr-2"></i> Gemini AI 分析結果</h3>`;
+            // NOTE: ここで whitespace-pre-wrap を削除し、マークダウン変換結果を挿入
+            htmlContent += `<div class="analysis-content text-sm dark:text-gray-100 leading-relaxed space-y-3">${renderedHtml}</div>`; 
+            
+            htmlContent += `</div>`;
+
+            analysisContainer.innerHTML = htmlContent;
+            
+            // --- 修正点: 分析成功後のボタン表示変更 ---
+            analyzeBtn.innerHTML = '<i class="fas fa-times mr-1"></i> 分析結果を非表示'; 
+            analyzeBtn.disabled = false;
+            // クラスを非表示ボタン用に設定
+            analyzeBtn.className = hideClasses;
+            // ------------------------------------------
+        }
+
+        // =======================================================
+        // Existing Calendar & Timetable Logic
+        // =======================================================
+        let currentMonth = new Date().getMonth();
+        let currentYear = new Date().getFullYear();
+        const today = new Date();
+        const todayDateOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        
+        const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`; 
+        let selectedDateString = todayString;
+
+        const dateFormatter = new Intl.DateTimeFormat('ja-JP', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            weekday: 'long'
+        });
+        
+        const dateTimeFormatter = new Intl.DateTimeFormat('ja-JP', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            weekday: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
+
+        // ダミーデータ（テスト用に追加）
+        const testDate = new Date();
+        testDate.setDate(testDate.getDate() + 5); 
+        const testDateString = `${testDate.getFullYear()}-${String(testDate.getMonth() + 1).padStart(2, '0')}-${String(testDate.getDate()).padStart(2, '0')}`;
+        
+        // 意図的に長いスケジュールを生成し、タイムテーブルのスクロールを確認しやすくする
+        let longSchedule = [];
+        for (let i = 0; i < 20; i++) {
+            longSchedule.push({ title: `ダミー予定 ${i + 1} (長いリスト)`, type: i % 2 === 0 ? "work" : "personal", time: `${String(8 + Math.floor(i / 2)).padStart(2, '0')}:${String((i % 2) * 30).padStart(2, '0')}` });
+        }
+
+        let monthlySchedule = {
+            [todayString]: [{ title: "歯医者の予約", type: "personal", time: "10:30" }, { title: "チームランチ", type: "work", time: "13:00" }, { title: "集中作業", type: "work", time: "14:30" }],
+            [testDateString]: longSchedule, // 意図的に長いスケジュールを特定の日に設定
+            '2025-10-25': [{ title: "技術セミナー", type: "work" }, { title: "重要会議", type: "work", time: "11:00" }, { title: "ジム", type: "personal" }], 
+            '2025-11-01': [{ title: "月初報告会", type: "work", time: "09:00" }, { title: "個人面談", type: "personal", time: "16:00" }],
+            '2025-12-10': [{ title: "年末パーティー", type: "personal" }, { title: "クライアントとのキックオフ", type: "work" }, { title: "請求書発行", type: "work" }, { title: "ジムトレーニング", type: "personal" }], 
+            '2025-12-11': [{ title: "休日出勤", type: "work" }], 
+            '2025-12-12': [{ title: "オンライン学習", type: "personal" }, { title: "プロジェクトレビュー", type: "work" }], 
+        };
+        
+        // 初期状態のスケジュールデータ
+        const initialSchedule = {
+            [todayString]: [{ title: "歯医者の予約", type: "personal", time: "10:30" }, { title: "チームランチ", type: "work", time: "13:00" }, { title: "集中作業", type: "work", time: "14:30" }],
+            '2025-10-25': [{ title: "技術セミナー", type: "work" }],
+            '2025-11-01': [{ title: "月初報告会", type: "work", time: "09:00" }, { title: "個人面談", type: "personal", time: "16:00" }],
+            '2025-12-10': [{ title: "年末パーティー", type: "personal" }, { title: "クライアントとのキックオフ", type: "work" }, { title: "請求書発行", type: "work" }, { title: "ジムトレーニング", type: "personal" }],
+        };
+        
+        function updateDateTimeDisplay() {
+            const now = new Date();
+            const dateTimeElement = document.getElementById('current-datetime');
+            dateTimeElement.textContent = dateTimeFormatter.format(now);
+        }
+
+        function updateConnectionStatus(connected) {
+            const statusIcon = document.getElementById('status-icon');
+            const statusText = document.getElementById('status-text');
+            const reloadBtn = document.getElementById('reload-calendar-btn');
+
+            if (connected) {
+                statusIcon.classList.remove('fa-unlink', 'text-gray-500', 'dark:text-gray-400');
+                statusIcon.classList.add('fa-check-circle', 'text-success-green');
+                statusText.textContent = message || 'Googleカレンダーに接続済みです。';
+                statusText.classList.remove('text-gray-700', 'dark:text-gray-200');
+                statusText.classList.add('text-success-green');
+            } else {
+                statusIcon.classList.remove('fa-check-circle', 'text-success-green');
+                statusIcon.classList.add('fa-unlink', 'text-gray-500', 'dark:text-gray-400');
+                statusText.textContent = message || 'Googleカレンダーは未接続です。';
+                statusText.classList.remove('text-success-green');
+                statusText.classList.add('text-gray-700', 'dark:text-gray-200');
+            }
+            reloadBtn.disabled = false;
+            reloadBtn.innerHTML = '<i class="fas fa-sync-alt mr-1"></i> 再読込';
+        }
+        
+        async function fetchGoogleCalendarEvents() {
+            const reloadBtn = document.getElementById('reload-calendar-btn');
+            reloadBtn.disabled = true;
+            reloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> 読込中...';
+            updateConnectionStatus(false, 'Googleカレンダーから予定を読み込み中...');
+
+            try {
+                const googleEvents = await new Promise((resolve, reject) => {
+                    google.script.run
+                        .withSuccessHandler(resolve)
+                        .withFailureHandler(reject)
+                        .fetchGoogleCalendarEvents(currentYear, currentMonth);
+                });
+
+                if (googleEvents.error) {
+                    throw new Error(googleEvents.error);
+                }
+
+                // 既存のスケジュールとマージ
+                monthlySchedule = { ...initialSchedule };
+                for (const dateKey in googleEvents) {
+                    if (monthlySchedule[dateKey]) {
+                        monthlySchedule[dateKey].push(...googleEvents[dateKey]);
+                    } else {
+                        monthlySchedule[dateKey] = googleEvents[dateKey];
+                    }
+                }
+
+                updateConnectionStatus(true);
+                renderCalendar(currentMonth, currentYear);
+                renderTimetable();
+                document.getElementById('analysis-result-container').innerHTML = '';
+
+            } catch (error) {
+                console.error("カレンダー連携エラー:", error);
+                updateConnectionStatus(false, error.message || "予定の取得に失敗しました。");
+            }
+        }
+
+        function getDailySchedule(dateKey) {
+            return monthlySchedule[dateKey] || [];
+        }
+
+        function showDaySchedule(dateKey, dayCell) {
+            const schedules = getDailySchedule(dateKey);
+
+            document.querySelectorAll('.schedule-popup').forEach(p => p.remove());
+
+            if (schedules.length === 0 || dayCell.classList.contains('cursor-default')) {
+                return;
+            }
+
+            const popup = document.createElement('div');
+            popup.classList.add(
+                'schedule-popup', 'absolute', 'z-20', 'bg-primary-blue', 'text-white', 'p-3', 
+                'rounded-lg', 'shadow-xl', 'w-56', 'transform', 'transition-opacity', 'duration-300', 
+                'opacity-0', 'pointer-events-none'
+            );
+            
+            const [, month, day] = dateKey.split('-');
+            const dateTitle = `${parseInt(month, 10)}月${parseInt(day, 10)}日の予定`;
+
+            let content = `<h3 class="font-bold border-b border-white/50 pb-1 mb-2">${dateTitle}</h3>`;
+            content += `<ul class="space-y-1 text-sm">`;
+            
+            schedules.forEach(schedule => {
+                const icon = schedule.type === 'work' ? '<i class="fas fa-briefcase mr-1 text-white/80"></i>' : '<i class="fas fa-user mr-1 text-white/80"></i>';
+                const time = schedule.time ? schedule.time + ' ' : '';
+                content += `<li class="flex items-start">${icon}${time}${schedule.title}</li>`;
+            });
+            content += `</ul>`;
+
+            popup.innerHTML = content;
+            
+            dayCell.appendChild(popup);
+
+            const rect = dayCell.getBoundingClientRect();
+            const calendarRect = document.getElementById('calendar-card').getBoundingClientRect();
+            const popupWidth = 224;
+            const isNearRightEdge = (rect.right + popupWidth) > calendarRect.right; 
+            
+            if (isNearRightEdge) {
+                popup.style.right = '0';
+                popup.style.top = `${rect.height}px`; 
+            } else {
+                popup.style.left = '0';
+                popup.style.top = `${rect.height}px`; 
+            }
+            
+            setTimeout(() => {
+                popup.classList.remove('opacity-0', 'pointer-events-none');
+                popup.classList.add('opacity-100');
+            }, 10);
+            
+            const closeHandler = (e) => {
+                if (!dayCell.contains(e.target)) {
+                    const currentPopup = document.querySelector('.schedule-popup');
+                    if (currentPopup) {
+                        currentPopup.classList.remove('opacity-100');
+                        currentPopup.classList.add('opacity-0', 'pointer-events-none');
+                        setTimeout(() => { currentPopup.remove(); }, 300);
+                    }
+                    document.removeEventListener('click', closeHandler);
+                }
+            };
+            
+            setTimeout(() => {
+                document.addEventListener('click', closeHandler);
+            }, 0);
+        }
+
+        function renderCalendar(month, year) {
+            const calendarGrid = document.getElementById('calendar-grid');
+            const monthDisplay = document.getElementById('month-display');
+            calendarGrid.innerHTML = '';
+
+            const firstDayOfMonth = new Date(year, month, 1);
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const startDay = firstDayOfMonth.getDay();
+
+            monthDisplay.textContent = `${year}年 ${month + 1}月`;
+
+            let weeklyEventCounts = [];
+            let currentWeekEvents = 0;
+            let dayCounter = 0; 
+            
+            for (let i = 0; i < startDay; i++) {
+                dayCounter++;
+            }
+
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const schedules = getDailySchedule(dateKey);
+                
+                currentWeekEvents += schedules.length;
+                dayCounter++;
+
+                if (dayCounter % 7 === 0 || day === daysInMonth) {
+                    weeklyEventCounts.push(currentWeekEvents);
+                    currentWeekEvents = 0; 
+                }
+            }
+            
+            const rowRatios = weeklyEventCounts.map(count => {
+                // イベント数に応じてセルの高さを調整
+                const ratio = (1 + count * 0.2).toFixed(1); 
+                return `${ratio}fr`;
+            }).join(' ');
+            
+            calendarGrid.style.gridTemplateRows = rowRatios;
+
+            for (let i = 0; i < startDay; i++) {
+                const emptyCell = document.createElement('div');
+                emptyCell.classList.add('p-1', 'text-center', 'rounded-lg', 'font-medium', 'text-gray-400', 'dark:text-gray-500');
+                calendarGrid.appendChild(emptyCell);
+            }
+
+            for (let day = 1; day <= daysInMonth; day++) {
+                const date = new Date(year, month, day);
+                const dayOfWeek = date.getDay();
+                
+                const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const schedules = getDailySchedule(dateKey);
+                const hasSchedule = schedules.length > 0;
+                
+                const isSelected = (dateKey === selectedDateString);
+
+                const dayCell = document.createElement('div');
+                dayCell.classList.add(
+                    'p-1', 'rounded-lg', 'font-semibold', 'cursor-pointer', 'transition-all', 'duration-200',
+                    'relative', 'flex', 'flex-col', 'items-start', 'overflow-hidden', 'h-full'
+                );
+                
+                const dayNumberSpan = document.createElement('span');
+                dayNumberSpan.textContent = day;
+                dayNumberSpan.classList.add('text-xs', 'font-extrabold', 'w-full', 'text-right', 'px-1', 'flex-shrink-0'); 
+
+                let dayTextColor = 'text-gray-700 dark:text-gray-200';
+                if (dayOfWeek === 6) { 
+                    dayTextColor = 'text-primary-blue dark:text-blue-300';
+                } else if (dayOfWeek === 0) { 
+                    dayTextColor = 'text-red-500 dark:text-red-400';
+                }
+                dayNumberSpan.classList.add(...dayTextColor.split(' '));
+                
+                const isToday = (day === today.getDate() && month === today.getMonth() && year === today.getFullYear());
+                
+                if (isSelected && !isToday) {
+                    dayCell.classList.add('bg-selected-teal/80', 'shadow-md');
+                    dayCell.classList.remove('hover:bg-gray-100', 'dark:hover:bg-gray-600');
+                    dayNumberSpan.classList.remove(...dayTextColor.split(' '));
+                    dayNumberSpan.classList.add('text-white');
+                } else if (isToday) {
+                    dayCell.classList.add('bg-accent-orange', 'shadow-md', 'scale-105');
+                    dayNumberSpan.classList.remove(...dayTextColor.split(' '));
+                    dayNumberSpan.classList.add('text-white');
+                } else {
+                    dayCell.classList.add('hover:bg-gray-100', 'dark:hover:bg-gray-600');
+                }
+
+                const dateToCheck = new Date(year, month, day);
+                const compareDate = new Date(dateToCheck.getFullYear(), dateToCheck.getMonth(), dateToCheck.getDate());
+
+                if (compareDate < todayDateOnly && !isToday && !isSelected) {
+                     dayNumberSpan.classList.remove(...dayTextColor.split(' '), 'text-white');
+                     dayNumberSpan.classList.add('text-gray-400', 'dark:text-gray-500');
+                     dayCell.classList.remove('hover:bg-gray-100', 'dark:hover:bg-gray-600', 'cursor-pointer', 'bg-selected-teal/80', 'shadow-md');
+                     dayCell.classList.add('cursor-default');
+                } else {
+                     dayCell.addEventListener('click', (event) => {
+                         event.stopPropagation();
+                         selectedDateString = dateKey;
+                         renderCalendar(currentMonth, currentYear); 
+                         renderTimetable(); 
+                         showDaySchedule(dateKey, dayCell);
+                         
+                         // 日付選択時に分析結果をクリアし、ボタンをリセット
+                         const analysisContainer = document.getElementById('analysis-result-container');
+                         const analyzeBtn = document.getElementById('analyze-schedule-btn');
+                         
+                         // フォントを細いゴシックに設定
+                         const defaultClasses = 'text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 font-light font-sans py-1 px-2 rounded-lg transition duration-150 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed';
+                         
+                         const selectedDateForButton = getButtonDateTitle(dateKey);
+
+                         analysisContainer.innerHTML = '';
+                         analyzeBtn.className = defaultClasses;
+                         analyzeBtn.innerHTML = `<i class="fas fa-bolt mr-1"></i> ${selectedDateForButton}の予定を分析`;
+                     });
+                }
+                
+                dayCell.appendChild(dayNumberSpan);
+
+                if (hasSchedule) {
+                    const scheduleListDiv = document.createElement('div');
+                    scheduleListDiv.classList.add('space-y-0', 'w-full', 'text-left', 'mt-0'); 
+                    
+                    schedules.forEach(schedule => {
+                        const itemDiv = document.createElement('div');
+                        
+                        let bgColor;
+                        if (isToday) {
+                            bgColor = 'bg-white/90 text-primary-blue';
+                        } else if (isSelected) {
+                            bgColor = 'bg-white/90 text-selected-teal';
+                        }
+                        else {
+                            bgColor = 'bg-primary-blue/80 text-white dark:bg-blue-600/80 dark:text-white';
+                        }
+
+                        itemDiv.classList.add(
+                            'text-xs', 'truncate', 'px-1', 'py-0', 'rounded-sm', ...bgColor.split(' ')
+                        );
+                        itemDiv.textContent = schedule.title;
+                        scheduleListDiv.appendChild(itemDiv);
+                    });
+
+                    dayCell.appendChild(scheduleListDiv);
+                }
+
+                calendarGrid.appendChild(dayCell);
+            }
+            
+            document.querySelectorAll('.schedule-popup').forEach(p => p.remove());
+        }
+
+        function renderTimetable() {
+            const timetableContainer = document.getElementById('timetable-container');
+            const selectedDateDisplay = document.getElementById('selected-date-display');
+            const backToTodayBtn = document.getElementById('back-to-today-btn');
+            const analyzeBtn = document.getElementById('analyze-schedule-btn'); // 追加
+
+            // 選択された日付に基づいてボタンテキストを更新
+            const dateTitleForButton = getButtonDateTitle(selectedDateString);
+            
+            // ボタンが「非表示」モードでなければ、テキストを更新する
+            if (!analyzeBtn.classList.contains('bg-red-500')) {
+                 analyzeBtn.innerHTML = `<i class="fas fa-bolt mr-1"></i> ${dateTitleForButton}の予定を分析`;
+            }
+            
+            timetableContainer.innerHTML = '';
+            
+            const [y, m, d] = selectedDateString.split('-').map(Number);
+            const selectedDate = new Date(y, m - 1, d);
+
+            selectedDateDisplay.textContent = dateFormatter.format(selectedDate);
+            
+            const isSelectedDateToday = selectedDateString === todayString;
+            backToTodayBtn.disabled = isSelectedDateToday;
+            if (isSelectedDateToday) {
+                backToTodayBtn.classList.add('hidden');
+            } else {
+                backToTodayBtn.classList.remove('hidden');
+            }
+
+            let selectedEvents = getDailySchedule(selectedDateString);
+            
+            let timedEvents = selectedEvents.filter(item => item.time);
+            let allDayEvents = selectedEvents.filter(item => !item.time);
+            
+            timedEvents.sort((a, b) => a.time.localeCompare(b.time));
+
+            let combinedSchedule = allDayEvents.map(item => ({ time: "終日", task: item.title, type: item.type }))
+                                                .concat(timedEvents.map(item => ({ time: item.time, task: item.title, type: item.type })));
+            
+            if (combinedSchedule.length === 0) {
+                timetableContainer.innerHTML = '<p class="text-gray-500 dark:text-gray-400 text-center py-4">予定がありません</p>';
+                document.getElementById('analysis-result-container').innerHTML = ''; // 予定がなければ分析結果もクリア
+                return;
+            }
+            
+            combinedSchedule.forEach((item) => {
+                const isAllDay = item.time === "終日";
+                let isCurrentOrUpcoming = false;
+                
+                if (!isAllDay && isSelectedDateToday) {
+                    const now = new Date();
+                    const [hourStr, minuteStr] = item.time.split(':');
+                    const hour = parseInt(hourStr, 10);
+                    const minute = parseInt(minuteStr, 10);
+                    
+                    const itemTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute);
+                    const diffMinutes = (itemTime.getTime() - now.getTime()) / 60000;
+
+                    if (diffMinutes >= -60 && diffMinutes <= 120) { 
+                        isCurrentOrUpcoming = true;
+                    }
+                }
+
+                const itemDiv = document.createElement('div');
+                itemDiv.classList.add(
+                    'flex', 'items-center', 'p-4', 'rounded-lg', 'shadow-inner', 'transition-all', 'duration-300'
+                );
+
+                const timeColor = (isCurrentOrUpcoming && !isAllDay) ? 'text-white' : 'text-selected-teal'; 
+                const taskColor = (isCurrentOrUpcoming && !isAllDay) ? 'text-white' : 'text-gray-800 dark:text-gray-100';
+                const iconClass = item.type === 'work' ? 'fa-briefcase' : 'fa-user';
+
+                if (isCurrentOrUpcoming && !isAllDay && isSelectedDateToday) { 
+                    itemDiv.classList.add('bg-selected-teal', 'text-white', 'shadow-md');
+                } else if (isAllDay) {
+                    itemDiv.classList.add('bg-accent-orange/10', 'border-l-4', 'border-accent-orange', 'dark:bg-accent-orange/20');
+                } else {
+                    itemDiv.classList.add('bg-gray-50', 'hover:bg-gray-100', 'dark:bg-gray-800', 'dark:hover:bg-gray-700');
+                }
+
+
+                itemDiv.innerHTML = `
+                    <div class="font-mono text-lg font-bold w-1/4 ${timeColor}">${item.time}</div>
+                    <div class="flex-grow ml-4 font-medium ${taskColor} flex items-center">
+                         <i class="fas ${iconClass} text-sm mr-2 opacity-75"></i>
+                         ${item.task}
+                    </div>
+                `;
+
+                timetableContainer.appendChild(itemDiv);
+            });
+        }
+        
+        function toggleTheme() {
+            const html = document.documentElement;
+            const themeIcon = document.getElementById('theme-icon');
+
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                themeIcon.classList.remove('fa-sun');
+                themeIcon.classList.add('fa-moon');
+            } else {
+                html.classList.add('dark');
+                themeIcon.classList.remove('fa-moon');
+                themeIcon.classList.add('fa-sun');
+            }
+        }
+        
+        function backToToday() {
+            if (selectedDateString !== todayString) {
+                selectedDateString = todayString;
+                currentMonth = today.getMonth();
+                currentYear = today.getFullYear();
+                
+                renderCalendar(currentMonth, currentYear);
+                renderTimetable();
+                
+                // 「今日に戻る」時も分析結果をクリアし、ボタンをリセット
+                const analysisContainer = document.getElementById('analysis-result-container');
+                const analyzeBtn = document.getElementById('analyze-schedule-btn');
+                
+                // フォントを細いゴシックに設定
+                const defaultClasses = 'text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 font-light font-sans py-1 px-2 rounded-lg transition duration-150 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed';
+                
+                analysisContainer.innerHTML = '';
+                analyzeBtn.className = defaultClasses;
+                
+                // 「今日」に戻るので、ボタンテキストは「今日の予定を分析」に戻る
+                analyzeBtn.innerHTML = '<i class="fas fa-bolt mr-1"></i> 今日の予定を分析';
+            }
+        }
+
+
+        window.onload = async function() {
+            if (document.documentElement.classList.contains('dark')) {
+                document.getElementById('theme-icon').classList.remove('fa-moon');
+                document.getElementById('theme-icon').classList.add('fa-sun');
+            } else {
+                document.getElementById('theme-icon').classList.remove('fa-sun');
+                document.getElementById('theme-icon').classList.add('fa-moon');
+            }
+            
+            renderCalendar(currentMonth, currentYear);
+            renderTimetable();
+            fetchGoogleCalendarEvents(); // 初期ロード時にカレンダーを読み込む
+            
+            updateDateTimeDisplay();
+            setInterval(updateDateTimeDisplay, 1000);
+
+            document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+            document.getElementById('back-to-today-btn').addEventListener('click', backToToday);
+            document.getElementById('analyze-schedule-btn').addEventListener('click', analyzeDailySchedule);
+
+            document.getElementById('prev-month').addEventListener('click', () => {
+                currentMonth--;
+                if (currentMonth < 0) {
+                    currentMonth = 11;
+                    currentYear--;
+                }
+                renderCalendar(currentMonth, currentYear);
+                
+                // 月移動時も分析結果をクリアし、ボタンをリセット
+                const analysisContainer = document.getElementById('analysis-result-container');
+                const analyzeBtn = document.getElementById('analyze-schedule-btn');
+                
+                // フォントを細いゴシックに設定
+                const defaultClasses = 'text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 font-light font-sans py-1 px-2 rounded-lg transition duration-150 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed';
+                
+                const selectedDateForButton = getButtonDateTitle(selectedDateString);
+
+                analysisContainer.innerHTML = '';
+                analyzeBtn.className = defaultClasses;
+                analyzeBtn.innerHTML = `<i class="fas fa-bolt mr-1"></i> ${selectedDateForButton}の予定を分析`;
+            });
+
+            document.getElementById('next-month').addEventListener('click', () => {
+                currentMonth++;
+                if (currentMonth > 11) {
+                    currentMonth = 0;
+                    currentYear++;
+                }
+                renderCalendar(currentMonth, currentYear);
+                
+                // 月移動時も分析結果をクリアし、ボタンをリセット
+                const analysisContainer = document.getElementById('analysis-result-container');
+                const analyzeBtn = document.getElementById('analyze-schedule-btn');
+                
+                // フォントを細いゴシックに設定
+                const defaultClasses = 'text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 font-light font-sans py-1 px-2 rounded-lg transition duration-150 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed';
+                
+                const selectedDateForButton = getButtonDateTitle(selectedDateString);
+
+                analysisContainer.innerHTML = '';
+                analyzeBtn.className = defaultClasses;
+                analyzeBtn.innerHTML = `<i class="fas fa-bolt mr-1"></i> ${selectedDateForButton}の予定を分析`;
+            });
+            
+            document.getElementById('reload-calendar-btn').addEventListener('click', fetchGoogleCalendarEvents);
+
+            setInterval(renderTimetable, 60000);
+        };
+
+    </script>
+
+</body>
+</html>
